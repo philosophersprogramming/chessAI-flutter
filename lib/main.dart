@@ -5,6 +5,7 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:shared_preferences/shared_preferences.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -82,11 +83,27 @@ class TakePictureScreenState extends State<TakePictureScreen> {
       widget.camera,
       ResolutionPreset.medium,
     );
-    _initializeControllerFuture = _controller.initialize();
-    // Set a default server address
-    _serverAddress = 'http://100.86.35.113:9081';
-    // Initialize text controller with the default value
-    _textController = TextEditingController(text: _serverAddress);
+     _initializeControllerFuture = _controller.initialize().catchError((error) {
+      if (kDebugMode) {
+        print("Error initializing camera: $error");
+      }
+      // Handle initialization error here
+    });
+    
+    // Initialize text controller with the saved or default value
+    _textController = TextEditingController();
+
+    _loadServerAddress(); // Load saved server address
+  }
+
+  void _loadServerAddress() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    setState(() {
+      // Retrieve the saved server address or set default value if not available
+      _serverAddress =
+          prefs.getString('serverAddress') ?? 'http://100.86.35.113:9081';
+      _textController.text = _serverAddress; // Update text controller
+    });
   }
 
   @override
@@ -156,49 +173,53 @@ class TakePictureScreenState extends State<TakePictureScreen> {
   }
 
   void _showSettingsPopup() {
-    showDialog(
-      context: _scaffoldKey.currentContext!,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Settings'),
-          content: SizedBox(
-            width: 300,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('Server Address'),
-                TextField(
-                  controller: _textController,
-                  decoration: const InputDecoration(
-                    hintText: 'Type here',
-                  ),
+  showDialog(
+    context: _scaffoldKey.currentContext!,
+    builder: (BuildContext context) {
+      return AlertDialog(
+        title: const Text('Settings'),
+        content: SizedBox(
+          width: 300,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('Server Address'),
+              TextField(
+                controller: _textController,
+                decoration: const InputDecoration(
+                  hintText: 'Type here',
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                // Access the entered text using _textController.text
-                _serverAddress = _textController.text;
-                if (kDebugMode) {
-                  print('Entered text: $_serverAddress');
-                }
-                Navigator.pop(context); // Close the dialog
-              },
-              child: const Text('Save'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context); // Close the dialog
-              },
-              child: const Text('Close'),
-            ),
-          ],
-        );
-      },
-    );
-  }
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              // Access the entered text using _textController.text
+              _serverAddress = _textController.text;
+              if (kDebugMode) {
+                print('Entered text: $_serverAddress');
+              }
+              SharedPreferences prefs = await SharedPreferences.getInstance();
+              await prefs.setString('serverAddress', _serverAddress); // Save server address
+              // ignore: use_build_context_synchronously
+              Navigator.pop(context); // Close the dialog
+            },
+            child: const Text('Save'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context); // Close the dialog
+            },
+            child: const Text('Close'),
+          ),
+        ],
+      );
+    },
+  );
+}
+
 
   @override
   Widget build(BuildContext context) {
@@ -218,7 +239,8 @@ class TakePictureScreenState extends State<TakePictureScreen> {
             children: [
               // Button on the opposite side of the camera button
               IconButton(
-                icon: const Icon(Icons.refresh), // Replace with your desired icon
+                icon:
+                    const Icon(Icons.refresh), // Replace with your desired icon
                 onPressed: () {
                   _onRefreshPressed();
                 },
@@ -279,6 +301,7 @@ class TakePictureScreenState extends State<TakePictureScreen> {
       return 'Error: $e';
     }
   }
+
   void _onRefreshPressed() async {
     // Send a POST request here
     String result = await sendRefreshRequest();
@@ -289,26 +312,26 @@ class TakePictureScreenState extends State<TakePictureScreen> {
   }
 
   Future<String> sendRefreshRequest() async {
-  try {
-    var request = http.MultipartRequest(
-      'POST',
-      Uri.parse('$_serverAddress/gamestat'),
-    );
-    request.fields.addAll({
-      'reset': 'true',
-    });
+    try {
+      var request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$_serverAddress/gamestat'),
+      );
+      request.fields.addAll({
+        'reset': 'true',
+      });
 
-    http.StreamedResponse response = await request.send();
+      http.StreamedResponse response = await request.send();
 
-    if (response.statusCode == 200) {
-      return await response.stream.bytesToString();
-    } else {
-      return 'Error: ${response.reasonPhrase}';
+      if (response.statusCode == 200) {
+        return await response.stream.bytesToString();
+      } else {
+        return 'Error: ${response.reasonPhrase}';
+      }
+    } catch (e) {
+      return 'Error: $e';
     }
-  } catch (e) {
-    return 'Error: $e';
   }
-}
 }
 
 class _ResultWidget extends StatefulWidget {
