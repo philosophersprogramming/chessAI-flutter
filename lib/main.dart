@@ -81,15 +81,15 @@ class TakePictureScreenState extends State<TakePictureScreen> {
     super.initState();
     _controller = CameraController(
       widget.camera,
-      ResolutionPreset.medium,
+      ResolutionPreset.max,
     );
-     _initializeControllerFuture = _controller.initialize().catchError((error) {
+    _initializeControllerFuture = _controller.initialize().catchError((error) {
       if (kDebugMode) {
         print("Error initializing camera: $error");
       }
       // Handle initialization error here
     });
-    
+
     // Initialize text controller with the saved or default value
     _textController = TextEditingController();
 
@@ -173,53 +173,53 @@ class TakePictureScreenState extends State<TakePictureScreen> {
   }
 
   void _showSettingsPopup() {
-  showDialog(
-    context: _scaffoldKey.currentContext!,
-    builder: (BuildContext context) {
-      return AlertDialog(
-        title: const Text('Settings'),
-        content: SizedBox(
-          width: 300,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('Server Address'),
-              TextField(
-                controller: _textController,
-                decoration: const InputDecoration(
-                  hintText: 'Type here',
+    showDialog(
+      context: _scaffoldKey.currentContext!,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Settings'),
+          content: SizedBox(
+            width: 300,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Server Address'),
+                TextField(
+                  controller: _textController,
+                  decoration: const InputDecoration(
+                    hintText: 'Type here',
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () async {
-              // Access the entered text using _textController.text
-              _serverAddress = _textController.text;
-              if (kDebugMode) {
-                print('Entered text: $_serverAddress');
-              }
-              SharedPreferences prefs = await SharedPreferences.getInstance();
-              await prefs.setString('serverAddress', _serverAddress); // Save server address
-              // ignore: use_build_context_synchronously
-              Navigator.pop(context); // Close the dialog
-            },
-            child: const Text('Save'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context); // Close the dialog
-            },
-            child: const Text('Close'),
-          ),
-        ],
-      );
-    },
-  );
-}
-
+          actions: [
+            TextButton(
+              onPressed: () async {
+                // Access the entered text using _textController.text
+                _serverAddress = _textController.text;
+                if (kDebugMode) {
+                  print('Entered text: $_serverAddress');
+                }
+                SharedPreferences prefs = await SharedPreferences.getInstance();
+                await prefs.setString(
+                    'serverAddress', _serverAddress); // Save server address
+                // ignore: use_build_context_synchronously
+                Navigator.pop(context); // Close the dialog
+              },
+              child: const Text('Save'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context); // Close the dialog
+              },
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -267,37 +267,34 @@ class TakePictureScreenState extends State<TakePictureScreen> {
   }
 
   Future<String> uploadImage(String imagePath) async {
-    var request =
-        http.MultipartRequest('POST', Uri.parse('$_serverAddress/upload'));
-
-    // Convert the image to bytes and create a MultipartFile with a .jpg file extension
-    List<int> imageBytes = await File(imagePath).readAsBytes();
-    http.MultipartFile imageFile =
-        http.MultipartFile.fromBytes('file', imageBytes, filename: 'image.jpg');
-
-    // Add the MultipartFile to the request
-    request.files.add(imageFile);
-
     try {
-      // Send the request
-      http.StreamedResponse response = await request.send();
+      var request =
+          http.MultipartRequest('POST', Uri.parse('$_serverAddress/upload'));
 
+      // Create a file object from the image path
+      File imageFile = File(imagePath);
+
+      // Create a multipart file from the image file
+      var multipartFile =
+          await http.MultipartFile.fromPath('file', imageFile.path);
+
+      // Add the multipart file to the request
+      request.files.add(multipartFile);
+
+      // Send the request
+      var response = await request.send();
+
+      // Check if the request was successful
       if (response.statusCode == 200) {
-        String responseBody = await response.stream.bytesToString();
-        if (kDebugMode) {
-          print('Response: $responseBody');
-        }
+        // Get the response body
+        var responseBody = await response.stream.bytesToString();
         return responseBody;
       } else {
-        if (kDebugMode) {
-          print('Error: ${response.reasonPhrase}');
-        }
+        // Handle error
         return 'Error: ${response.reasonPhrase}';
       }
     } catch (e) {
-      if (kDebugMode) {
-        print('Error: $e');
-      }
+      // Handle error
       return 'Error: $e';
     }
   }
